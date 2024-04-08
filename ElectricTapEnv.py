@@ -14,7 +14,7 @@ I_ACTION_INDEX = 1
 D_ACTION_INDEX = 2
 
 MIN_SETPOINT = 0
-MAX_SETPOINT = 0
+MAX_SETPOINT = 10
 
 MIN_ERROR = 0.001
 MAX_ERROR = (MAX_SETPOINT - MIN_SETPOINT)/2
@@ -28,17 +28,31 @@ MAX_OVERALL_REWARD = 100
 MIN_CONTROL_ACTION = 0
 MAX_CONTROL_ACTION = 10*10/math.pi
 
+SIMULATION_STEP_PERIOD_SEC = 0.02
+
+MIN_KP = -10
+MAX_KP = 10
+
+MIN_KI = -10
+MAX_KI = 10
+
+MIN_KD = -10
+MAX_KD = 10
+
 class ElectricTapEnv(Env):
     def __init__(self):
         super().__init__()
         self.simulator = TapSimulator()
 
         # actions can be decrement, maintain or decrement gains by a pre-defined value
-        self.action_space = Discrete(7)
+        # self.action_space = Discrete(7)
+        # action is to choose the pid gains
+        self.action_space = Box(np.array([MIN_KP, MIN_KI, MIN_KD]), np.array([MAX_KP, MAX_KI, MAX_KD]), shape=(3,), dtype=np.float32)
         # observation space has the form: [pv, mv, error, error_integral, error_derivative, kp, ki, kd]
         lower_limits = np.array([-math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf])
         upper_limits = np.array([math.inf, math.inf, math.inf, math.inf, math.inf, math.inf, math.inf, math.inf])
         self.observation_space = Box(np.array(lower_limits), np.array(upper_limits), shape=(8,), dtype=np.float32)
+        self.reward_range = (-25,25)
 
         
         self.internal_state = {
@@ -60,6 +74,7 @@ class ElectricTapEnv(Env):
         self.__set_setpoint()
     
     def step(self, action):
+        print(f"step with action: {action}")
         self.__increment_counter()
         self.__take_action(action)
         self.__simulate_plant()
@@ -98,10 +113,11 @@ class ElectricTapEnv(Env):
 
     def __get_reward(self):
         error = self.internal_state["setpoint"] - self.internal_state["pv_arr"][-1]
+        print(f"error: {error}, setpoint: {self.internal_state['setpoint']}, pv: {self.internal_state['pv_arr'][-1]}")
 
         # error off thresholds (insignificant or giant error)
-        if(error<MIN_ERROR): return MAX_OVERALL_REWARD # maximum reward when minimum error
-        if(error>MAX_ERROR): return MIN_OVERALL_REWARD # minimum reward when maximum error
+        if(abs(error)<MIN_ERROR): return MAX_OVERALL_REWARD # maximum reward when minimum error
+        if(abs(error)>MAX_ERROR): return MIN_OVERALL_REWARD # minimum reward when maximum error
 
         delta_reward = MAX_CALCULATED_REWARD-MIN_CALCULATED_REWARD
         delta_error = (MAX_ERROR*MAX_ERROR - MIN_ERROR*MIN_ERROR)/self.internal_state["noise_power"]
@@ -139,7 +155,7 @@ class ElectricTapEnv(Env):
 
         return ran_out_of_time or stabilized
 
-    def __take_action(self, action):
+    def __take_action_deprecated(self, action):
         # increase, decrement or maintain each of the PID parameters
         pid_increment = 0.01
         action_map = [
@@ -152,6 +168,11 @@ class ElectricTapEnv(Env):
         self.internal_state["KP"] += action_map[action][P_ACTION_INDEX]
         self.internal_state["KI"] += action_map[action][I_ACTION_INDEX]
         self.internal_state["KD"] += action_map[action][D_ACTION_INDEX]
+
+    def __take_action(self, action):
+        self.internal_state["KP"] = action[0]
+        self.internal_state["KI"] = action[1]
+        self.internal_state["KD"] = action[2]
 
     def __calculate_control_action(self):
         error = list(map(lambda pv: self.internal_state["setpoint"]-pv, self.internal_state["pv_arr"]))
@@ -170,7 +191,7 @@ class ElectricTapEnv(Env):
         x1 = self.internal_state["pv_arr"][-1]
         x1_ponto = (x1 - self.internal_state["pv_arr"][-2])/self.simulator.Ts
         y0 = [x1, x1_ponto]
-        simulation_result = self.simulator.simulate(y0, self.internal_state["control_action_arr"][-1], control_action)
+        simulation_result = self.simulator.simulate(y0, self.internal_state["control_action_arr"][-1], control_action, SIMULATION_STEP_PERIOD_SEC)
 
         pv = simulation_result[-1,0]
 

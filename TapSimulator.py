@@ -1,4 +1,5 @@
 import math
+import random
 from scipy import integrate
 import numpy as np
 from typing import List
@@ -14,7 +15,7 @@ class TapSimulator:
         self.k = -0.1093
         self.Ts = 0.2
 
-        self.noiseVariance = 0.1
+        self.noiseVariance = 0.01
 
     def __F(self, theta: float) -> float:
         return ((self.vin*self.vin)/self.R) * (0.5 - theta/(2*math.pi) + math.sin(2*theta)/(4*math.pi))
@@ -22,8 +23,8 @@ class TapSimulator:
     def __dFdt(self, theta: float) -> float:
         return ((self.vin*self.vin)/(self.R*2*math.pi)) * (math.cos(2*theta)-1) + 0.00001
     
-    def __get_noise(self):
-        return 0
+    def __get_noise(self, process_value):
+        return random.uniform(-self.noiseVariance, self.noiseVariance) * process_value
 
     """
     x1 = output (V)
@@ -34,14 +35,14 @@ class TapSimulator:
         x1, x2 = y
 
         # inject noise into simulated output
-        x1 += self.__get_noise()
+        x1 += self.__get_noise(x1)
 
         return [
             x2, # x1dot
             ((self.k*(self.__F(self.r*u)-self.__F(self.r*u0)))/(self.r*self.__dFdt(self.r*u0)) - x1 - x2*(self.tau1+self.tau2))/(self.tau1*self.tau2) #x2dot
         ]
 
-    def simulate(self, y0: List[int], u0: float, u: float, simulationPeriodSec: int):
+    def simulate(self, y0: List[int], u0: float, u: float, simulationPeriodSec: float):
         """
         Simulates one plant iteration given a control input and a initial state
 

@@ -10,8 +10,10 @@ from ElectricTapEnv import ElectricTapEnv
 # create environment
 env = ElectricTapEnv()
 check_env(env)
+print("created env")
 
-env = DummyVecEnv([lambda: env])
+#env = DummyVecEnv([lambda: env])
+print("wrapped env")
 
 # test environment
 episodes = 5
@@ -23,13 +25,14 @@ for episode in range(1, episodes+1):
     while not done:
         env.render()
         action = env.action_space.sample()
-        n_state, reward, done, info = env.step(action)
+        print(f"next step: f{action}")
+        n_state, reward, done, truncated, info = env.step(action)
         score+=reward
     print('Episode:{} Score:{}'.format(episode, score))
 env.close()
 
 # train the model
-log_path = os.join("training", "logs")
+log_path = os.path.join("training", "logs")
 model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_path)
 
 num_of_episodes = 1000000
