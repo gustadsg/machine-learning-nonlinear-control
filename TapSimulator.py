@@ -15,7 +15,7 @@ class TapSimulator:
         self.k = -0.1093
         self.Ts = 0.2
 
-        self.noiseVariance = 0.01
+        self.noiseVariance = 0.004
 
     def __F(self, theta: float) -> float:
         return ((self.vin*self.vin)/self.R) * (0.5 - theta/(2*math.pi) + math.sin(2*theta)/(4*math.pi))
@@ -23,8 +23,15 @@ class TapSimulator:
     def __dFdt(self, theta: float) -> float:
         return ((self.vin*self.vin)/(self.R*2*math.pi)) * (math.cos(2*theta)-1) + 0.00001
     
-    def __get_noise(self, process_value):
-        return random.uniform(-self.noiseVariance, self.noiseVariance) * process_value
+    def generate_noise(self, number_of_points):
+        noise_vec = list()
+        noise_rate = 0.01
+        for i in range(number_of_points):
+            sample_has_noise = random.uniform(0,1) < noise_rate
+            sample_noise_value = random.uniform(-self.noiseVariance, self.noiseVariance) if sample_has_noise else 0
+            noise_vec.append(sample_noise_value)
+
+        return noise_vec
 
     """
     x1 = output (V)
@@ -33,9 +40,6 @@ class TapSimulator:
     """
     def __plant(self, y, t, u, u0):
         x1, x2 = y
-
-        # inject noise into simulated output
-        x1 += self.__get_noise(x1)
 
         return [
             x2, # x1dot
@@ -83,11 +87,12 @@ if __name__ == "__main__":
     for i in range(len(u_values)):
         u = u_values[i]
         result = TapSimulator.simulate(y0, u0, u, simulationPeriod)  # Comece cada degrau a partir do anterior
+        noise = TapSimulator.generate_noise(len(result))
         t = np.linspace(i * simulationPeriod, (i + 1) * simulationPeriod, len(result))  # Intervalo de tempo para cada degrau
         y0 = result[-1]
 
         print(f"Final (Saída {i+1}): {result[-1, 0]}")
-        ax1.plot(t, result[:, 0])
+        ax1.plot(t, result[:, 0] + noise)
         
         u_vector = np.append(u_vector, np.full(len(result), u))
 
