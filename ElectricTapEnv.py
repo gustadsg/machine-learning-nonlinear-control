@@ -22,7 +22,6 @@ MAX_ERROR = (MAX_SETPOINT - MIN_SETPOINT)/2
 MIN_CALCULATED_REWARD = -25
 MAX_CALCULATED_REWARD = 25
 
-MIN_OVERALL_REWARD = -100
 MAX_OVERALL_REWARD = 100
 
 MIN_CONTROL_ACTION = 0
@@ -39,6 +38,8 @@ MAX_KI = 10
 MIN_KD = -10
 MAX_KD = 10
 
+NOISE_GAMMA = 1
+
 class ElectricTapEnv(Env):
     def __init__(self):
         super().__init__()
@@ -54,19 +55,8 @@ class ElectricTapEnv(Env):
         self.observation_space = Box(np.array(lower_limits), np.array(upper_limits), shape=(8,), dtype=np.float32)
         self.reward_range = (-25,25)
 
-        
-        self.internal_state = {
-            "KP": 1,
-            "KI": 0,
-            "KD": 0,
-            "integral_error": 0,
-            "pv_arr": [], 
-            "control_action_arr": [],
-            "setpoint": random.uniform(MIN_SETPOINT, MAX_SETPOINT),
-            "noise_power": 1,
-            "iterations_counter": 0,
-            "max_iterations": 500
-        }
+        # initialize internal state
+        self.reset()
 
         # get random initial state
         self.__set_initial_control_action()
@@ -74,12 +64,10 @@ class ElectricTapEnv(Env):
         self.__set_setpoint()
     
     def step(self, action):
-        print(f"step with action: {action}")
         self.__increment_counter()
         self.__take_action(action)
         self.__simulate_plant()
         
-        # simulator.simulate()
         reward = self.__get_reward()
         done = self.__get_is_done()
 
@@ -100,7 +88,7 @@ class ElectricTapEnv(Env):
             "pv_arr": [], 
             "control_action_arr": [],
             "setpoint": random.uniform(MIN_SETPOINT, MAX_SETPOINT),
-            "noise_power": 1,
+            "noise": 0,
             "iterations_counter": 0,
             "max_iterations": 500
         }
@@ -113,17 +101,14 @@ class ElectricTapEnv(Env):
 
     def __get_reward(self):
         error = self.internal_state["setpoint"] - self.internal_state["pv_arr"][-1]
-        print(f"error: {error}, setpoint: {self.internal_state['setpoint']}, pv: {self.internal_state['pv_arr'][-1]}")
 
-        # error off thresholds (insignificant or giant error)
         if(abs(error)<MIN_ERROR): return MAX_OVERALL_REWARD # maximum reward when minimum error
-        if(abs(error)>MAX_ERROR): return MIN_OVERALL_REWARD # minimum reward when maximum error
 
-        delta_reward = MAX_CALCULATED_REWARD-MIN_CALCULATED_REWARD
-        delta_error = (MAX_ERROR*MAX_ERROR - MIN_ERROR*MIN_ERROR)/self.internal_state["noise_power"]
+        reward = -(error*error) + NOISE_GAMMA*self.internal_state["noise"]*self.internal_state["noise"]
 
-        quadratic_error_param = (error*error)/self.internal_state["noise_power"]
-        reward = MIN_CALCULATED_REWARD + delta_reward/delta_error * quadratic_error_param
+        if(np.isnan(reward) or not np.isreal(reward)):
+            print(f"Invalid reward value: {reward}. Returning 0")
+            return 0
 
         return reward
 
@@ -192,10 +177,12 @@ class ElectricTapEnv(Env):
         x1_ponto = (x1 - self.internal_state["pv_arr"][-2])/self.simulator.Ts
         y0 = [x1, x1_ponto]
         simulation_result = self.simulator.simulate(y0, self.internal_state["control_action_arr"][-1], control_action, SIMULATION_STEP_PERIOD_SEC)
+        simulation_noise = self.simulator.generate_noise(len(simulation_result[:,]))
 
         pv = simulation_result[-1,0]
 
         self.internal_state["pv_arr"].append(pv)
+        self.internal_state["noise"] = simulation_noise[-1]
 
         return pv
     
@@ -212,4 +199,29 @@ class ElectricTapEnv(Env):
         ki = self.internal_state["KI"]
         kd = self.internal_state["KD"]
 
-        return np.array([pv, mv, error, error_integral, error_derivative, kp, ki, kd]).astype(np.float32)
+        try:
+            raw_output = np.array([pv, mv, error, error_integral, error_derivative, kp, ki, kd]).astype(np.float32)
+            output, replaced = self.__replace_if_invalid(raw_output)
+
+            if(replaced):
+                print(f"replacement needed for output: {raw_output}")
+
+            return output
+        except:
+            print(f"Overflow ocourred {[pv, mv, error, error_integral, error_derivative, kp, ki, kd]}")
+            return np.array([0, 0, MAX_ERROR, 0, 0, 0, 0, 0]).astype(np.float32)
+    
+    def __replace_if_invalid(self, input_values):
+        output_values = []
+        replaced = False
+        for val in input_values:
+            if not isinstance(val, np.float32):
+                val = np.float32(val)
+            
+            if not np.isreal(val) or np.isnan(val):
+                val = np.float32(0.0)
+                replaced = True
+
+            output_values.append(val)
+
+        return np.array(output_values), replaced

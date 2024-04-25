@@ -28,7 +28,7 @@ class TapSimulator:
         noise_rate = 0.01
         for i in range(number_of_points):
             sample_has_noise = random.uniform(0,1) < noise_rate
-            sample_noise_value = random.uniform(-self.noiseVariance, self.noiseVariance) if sample_has_noise else 0
+            sample_noise_value = random.gauss(0, self.noiseVariance) if sample_has_noise else 0
             noise_vec.append(sample_noise_value)
 
         return noise_vec
