@@ -1,44 +1,58 @@
 import os
-from stable_baselines3 import PPO
+import argparse
+from stable_baselines3 import PPO, TD3, SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.evaluation import evaluate_policy
 
-
 from ElectricTapEnv import ElectricTapEnv
 
-# create environment
-env = ElectricTapEnv()
-check_env(env)
-print("created env")
+def main(episodes, algorithm, train_episodes):
+    # create environment
+    env = ElectricTapEnv()
+    check_env(env)
+    print("created env")
 
-#env = DummyVecEnv([lambda: env])
-print("wrapped env")
+    # test environment
+    for episode in range(1, episodes + 1):
+        state = env.reset()
+        done = False
+        score = 0
+        
+        while not done:
+            env.render()
+            action = env.action_space.sample()
+            n_state, reward, done, truncated, info = env.step(action)
+            score += reward
+            done = done
+        print('Episode:{} Score:{}'.format(episode, score))
+    env.close()
 
-# test environment
-episodes = 5
-for episode in range(1, episodes+1):
-    state = env.reset()
-    done = False
-    score = 0 
+    # train the model
+    log_path = os.path.join("training", "logs")
     
-    while not done:
-        env.render()
-        action = env.action_space.sample()
-        #print(f"next step: f{action}")
-        n_state, reward, done, truncated, info = env.step(action)
-        score+=reward
-    #print('Episode:{} Score:{}'.format(episode, score))
-env.close()
+    if algorithm == 'PPO':
+        model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=os.path.join(log_path, "ppo"))
+    elif algorithm == 'TD3':
+        model = TD3("MlpPolicy", env, verbose=1, tensorboard_log=os.path.join(log_path, "td3"))
+    elif algorithm == 'SAC':
+        model = SAC("MlpPolicy", env, verbose=1, tensorboard_log=os.path.join(log_path, "sac"))
+    else:
+        raise ValueError("Unsupported algorithm. Choose from PPO, TD3, SAC.")
+    
+    model.learn(total_timesteps=train_episodes)
 
-# train the model
-log_path = os.path.join("training", "logs")
-model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_path)
+    # save the model
+    model.save(algorithm)
+    mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=10)
+    print(f"Mean reward over 10 evaluation episodes: {mean_reward}")
 
-num_of_episodes = 1000000
-model.learn(total_timesteps=num_of_episodes)
-
-# save the model
-model.save('PPO')
-mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=10)
-print(f"Mean reward over 10 evaluation episodes: {mean_reward}")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Train a reinforcement learning model.')
+    parser.add_argument('--episodes', type=int, default=5, help='Number of episodes to test the environment')
+    parser.add_argument('--algorithm', type=str, default='SAC', help='Algorithm to use for training (PPO, TD3, SAC)')
+    parser.add_argument('--train_timestaps', type=int, default=10_000_000, help='Number of episodes to train the model')
+    
+    args = parser.parse_args()
+    
+    main(args.episodes, args.algorithm, args.train_timestaps)

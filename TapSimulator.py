@@ -13,9 +13,8 @@ class TapSimulator:
         self.tau2 = 26.8097
         self.r = math.pi/10
         self.k = -0.1093
-        self.Ts = 0.2
 
-        self.noiseVariance = 0.004
+        self.noiseVariance = 2.287e-4
 
     def __F(self, theta: float) -> float:
         return ((self.vin*self.vin)/self.R) * (0.5 - theta/(2*math.pi) + math.sin(2*theta)/(4*math.pi))
@@ -23,13 +22,14 @@ class TapSimulator:
     def __dFdt(self, theta: float) -> float:
         return ((self.vin*self.vin)/(self.R*2*math.pi)) * (math.cos(2*theta)-1) + 0.00001
     
-    def generate_noise(self, number_of_points):
+    def generate_noise(self, number_of_points: int):
         noise_vec = list()
         noise_rate = 0.01
         for i in range(number_of_points):
             sample_has_noise = random.uniform(0,1) < noise_rate
             sample_noise_value = random.gauss(0, self.noiseVariance) if sample_has_noise else 0
-            noise_vec.append(sample_noise_value)
+            # noise_vec.append(sample_noise_value)
+            noise_vec.append(0)
 
         return noise_vec
 
@@ -38,15 +38,17 @@ class TapSimulator:
     x2 = x1dot = output derivative (V/s)
     x2dot = output second derivative (v/s^2)
     """
-    def __plant(self, y, t, u, u0):
+    def __plant(self, y: List[float], t, u: float, u0: float, noise: float):
         x1, x2 = y
+        noise_variance = 2.287e-4
+        u = noise_variance*noise + u
 
         return [
             x2, # x1dot
             ((self.k*(self.__F(self.r*u)-self.__F(self.r*u0)))/(self.r*self.__dFdt(self.r*u0)) - x1 - x2*(self.tau1+self.tau2))/(self.tau1*self.tau2) #x2dot
         ]
 
-    def simulate(self, y0: List[int], u0: float, u: float, simulationPeriodSec: float):
+    def simulate(self, y0: List[int], u0: float, u: float, simulationPeriodSec: float, noise: float):
         """
         Simulates one plant iteration given a control input and a initial state
 
@@ -60,11 +62,11 @@ class TapSimulator:
             The list of points collected during the simulation
         """
 
-        # 1 point each 20ms
-        num_of_points =  math.floor((simulationPeriodSec*1000)/5)
+        # 1 point each 50ms
+        num_of_points =  5
 
         t = np.linspace(0, simulationPeriodSec, num_of_points)
-        return integrate.odeint(self.__plant, y0, t, args=(u, u0))
+        return integrate.odeint(self.__plant, y0, t, args=(u, u0, noise))
     
 
 if __name__ == "__main__":
@@ -86,12 +88,12 @@ if __name__ == "__main__":
     # Simulação para cada degrau
     for i in range(len(u_values)):
         u = u_values[i]
-        result = TapSimulator.simulate(y0, u0, u, simulationPeriod)  # Comece cada degrau a partir do anterior
-        noise = TapSimulator.generate_noise(len(result))
+        num_of_points =  math.floor((simulationPeriod*1000)/5)
+        noise = TapSimulator.generate_noise(num_of_points)
+        result = TapSimulator.simulate(y0, u0, u, simulationPeriod, noise[-1])  # Comece cada degrau a partir do anterior
         t = np.linspace(i * simulationPeriod, (i + 1) * simulationPeriod, len(result))  # Intervalo de tempo para cada degrau
         y0 = result[-1]
 
-        print(f"Final (Saída {i+1}): {result[-1, 0]}")
         ax1.plot(t, result[:, 0] + noise)
         
         u_vector = np.append(u_vector, np.full(len(result), u))
