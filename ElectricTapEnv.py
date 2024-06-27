@@ -94,7 +94,8 @@ class ElectricTapEnv(Env):
             "iterations_counter": 0,
             "max_iterations": 240,
             "x1": 0,
-            "x1_ponto": 0
+            "x1_ponto": 0,
+            "forced_stop": False
         }
 
         self.__set_initial_control_action()
@@ -140,6 +141,9 @@ class ElectricTapEnv(Env):
         self.internal_state["iterations_counter"] += 1
 
     def __get_is_done(self):
+        if(self.internal_state["forced_stop"]):
+            return True
+
         ran_out_of_time = self.internal_state["iterations_counter"] >= self.internal_state["max_iterations"]
         
         abs_error_arr = list(map(lambda pv: abs(self.internal_state["setpoint"]-pv), self.internal_state["pv_arr"]))
@@ -205,17 +209,19 @@ class ElectricTapEnv(Env):
 
             if replaced:
                 print(f"Replacement needed for output: {raw_output}")
-                self.__force_end_episode()
+                self.__force_stop_episode()
 
             return output
         except Exception as e:
             print(f"Overflow occurred with values: {[pv, mv, error, error_integral, error_derivative, kp, ki, kd]}")
             print(f"Exception: {e}")
-            self.__force_end_episode()
+            self.__force_stop_episode()
             return np.array([0, 0, MAX_ERROR, 0, 0, 0, 0, 0]).astype(np.float32)
         
-    def __force_end_episode(self):
+    def __force_stop_episode(self):
+        self.reset()
         self.internal_state["iterations_counter"] = 500
+        self.internal_state["foced_stop"] = True
 
     def __replace_if_invalid(self, input_values):
         output_values = []
