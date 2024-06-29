@@ -133,7 +133,7 @@ class ElectricTapEnv(Env):
 
     def __set_initial_control_action(self):
         # random initial control action
-        control_action = random.uniform(0,10*self.simulator.r)
+        control_action = random.uniform(0,10)
         self.internal_state["control_action_arr"].append(control_action)
         self.internal_state["control_action_arr"].append(control_action)
 
@@ -178,7 +178,7 @@ class ElectricTapEnv(Env):
         num_of_points =  math.floor((SIMULATION_STEP_PERIOD_SEC*1000)/5)
         standart_deviation = .0149
         simulation_noise = list(map(lambda x: x*standart_deviation, self.simulator.generate_noise(num_of_points)))
-        simulation_result = self.simulator.simulate(y0, self.internal_state["control_action_arr"][-1], control_action, SIMULATION_STEP_PERIOD_SEC, simulation_noise[-1])
+        simulation_result = self.simulator.simulate(y0, control_action, SIMULATION_STEP_PERIOD_SEC, simulation_noise[-1])
         
         
         pv = simulation_result[-1,0]
