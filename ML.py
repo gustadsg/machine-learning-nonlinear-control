@@ -51,8 +51,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a reinforcement learning model.')
     parser.add_argument('--episodes', type=int, default=5, help='Number of episodes to test the environment')
     parser.add_argument('--algorithm', type=str, default='SAC', help='Algorithm to use for training (PPO, TD3, SAC)')
-    parser.add_argument('--train_timestaps', type=int, default=1_000_000, help='Number of episodes to train the model')
+    parser.add_argument('--train_timesteps', type=int, default=1_000_000, help='Number of episodes to train the model')
     
     args = parser.parse_args()
     
-    main(args.episodes, args.algorithm, args.train_timestaps)
+    main(args.episodes, args.algorithm, args.train_timesteps)

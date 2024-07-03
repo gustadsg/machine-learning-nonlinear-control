@@ -60,7 +60,6 @@ class TapSimulator:
             The list of points collected during the simulation
         """
 
-        # 1 point each 50ms
         num_of_points =  5
 
         t = np.linspace(0, simulationPeriodSec, num_of_points)
@@ -92,7 +91,7 @@ if __name__ == "__main__":
         t = np.linspace(i * simulationPeriod, (i + 1) * simulationPeriod, len(result))  # Intervalo de tempo para cada degrau
         y0 = result[-1]
 
-        ax1.plot(t, result[:, 0] + noise)
+        ax1.plot(t, result[:, 0])
         
         u_vector = np.append(u_vector, np.full(len(result), u))
 

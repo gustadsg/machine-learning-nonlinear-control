@@ -14,8 +14,8 @@ P_ACTION_INDEX = 0
 I_ACTION_INDEX = 1
 D_ACTION_INDEX = 2
 
-MIN_SETPOINT = 0
-MAX_SETPOINT = 3.023-2.353 # max tensao lido - min tensao sensor
+MIN_SETPOINT = 2.353 # min tensao sensor
+MAX_SETPOINT = 3.023 # max tensao lido
 AVG_SETPOINT = MAX_SETPOINT/2
 
 MIN_ERROR = 0.001
