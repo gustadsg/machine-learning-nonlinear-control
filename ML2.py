@@ -1,21 +1,40 @@
 import os
 import argparse
+from enum import Enum
+
 from concurrent.futures import ThreadPoolExecutor
-from stable_baselines3 import PPO, TD3, SAC
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3 import PPO, TD3, SAC, PPO, A2C, DDPG, HerReplayBuffer
+from sb3_contrib import ARS, RecurrentPPO, TQC, TRPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
 
 from ElectricTapEnv import ElectricTapEnv
 
+class Algorithm(Enum):
+    PPO='PPO'
+    TD3='TD3'
+    SAC='SAC'
+    A2C='A2C'
+    DDPG='DDPG'
+    ARS='ARS'
+    RecurrentPPO='RecurrentPPO'
+    TQC='TQC'
+    TRPO='TRPO'
+
 class ProgressCallback(BaseCallback):
     algorithm_color = {
-    'PPO': '\033[94m',  # Blue
-    'TD3': '\033[92m',  # Green
-    'SAC': '\033[93m',  # Yellow
-    'RESET': '\033[0m'  # Reset color
-}
+        Algorithm.PPO.value: '\033[94m',  # Blue
+        Algorithm.TD3.value: '\033[92m',  # Green
+        Algorithm.SAC.value: '\033[93m',  # Yellow
+        Algorithm.A2C.value: '\033[95m',  # Magenta
+        Algorithm.DDPG.value: '\033[96m',  # Cyan
+        Algorithm.ARS.value: '\033[90m',  # Grey
+        Algorithm.RecurrentPPO.value: '\033[97m',  # White
+        Algorithm.TQC.value: '\033[35m',  # Purple
+        Algorithm.TRPO.value: '\033[36m',  # Light Cyan
+        'RESET': '\033[0m'  # Reset color
+    }
 
     def __init__(self, total_timesteps, algotithm_name, check_freq=1000):
         super(ProgressCallback, self).__init__()
@@ -28,7 +47,8 @@ class ProgressCallback(BaseCallback):
         self.timesteps_done += 1
         if self.timesteps_done % self.check_freq == 0 or self.timesteps_done == self.total_timesteps:
             progress = 100 * self.timesteps_done / self.total_timesteps
-            print(f"{self.algorithm_color[self.algorithm_name]}[{self.algorithm_name}] Training progress: {progress:.2f}% -> {self.timesteps_done} out of {self.total_timesteps} timesteps.")
+            color = self.algorithm_color[self.algorithm_name] if self.algorithm_name in self.algorithm_color else self.algorithm_color['RESET']
+            print(f"{color}[{self.algorithm_name}] Training progress: {progress:.2f}% -> {self.timesteps_done} out of {self.total_timesteps} timesteps.")
         return True
 
 def train_model(algorithm, train_timesteps):
@@ -39,17 +59,28 @@ def train_model(algorithm, train_timesteps):
 
     # train the model
     log_path = os.path.join("training", "logs2", algorithm.lower())
-
-    if algorithm == 'PPO':
+    if algorithm == Algorithm.PPO.value:
         model = PPO("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
-    elif algorithm == 'TD3':
+    elif algorithm == Algorithm.TD3.value:
         model = TD3("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
-    elif algorithm == 'SAC':
+    elif algorithm == Algorithm.SAC.value:
         model = SAC("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
+    elif algorithm == Algorithm.ARS.value:
+        model = ARS("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
+    elif algorithm == Algorithm.A2C.value:
+        model = A2C("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
+    elif algorithm == Algorithm.DDPG.value:
+        model = DDPG("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
+    elif algorithm == Algorithm.RecurrentPPO.value:
+        model = RecurrentPPO("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
+    elif algorithm == Algorithm.TQC.value:
+        model = TQC("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
+    elif algorithm == Algorithm.TRPO.value:
+        model = TRPO("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
     else:
-        raise ValueError("Unsupported algorithm. Choose from PPO, TD3, SAC.")
+        raise ValueError("Unsupported algorithm.")
     
-    callback = ProgressCallback(total_timesteps=train_timesteps, algotithm_name=algorithm,check_freq=10_000)
+    callback = ProgressCallback(total_timesteps=train_timesteps, algotithm_name=algorithm,check_freq=500)
     model.learn(total_timesteps=train_timesteps, callback=callback)
 
     # save the model
@@ -57,8 +88,10 @@ def train_model(algorithm, train_timesteps):
     mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=10)
     print(f"Mean reward over 10 evaluation episodes for {algorithm}: {mean_reward}")
 
-def main(episodes, train_timesteps):
-    algorithms = ['PPO', 'TD3', 'SAC']
+def main(train_timesteps):
+    algorithms = [alg.value for alg in Algorithm]
+
+    algorithms = [Algorithm.ARS.value]
 
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(train_model, algorithm, train_timesteps) for algorithm in algorithms]
@@ -67,9 +100,8 @@ def main(episodes, train_timesteps):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train reinforcement learning models concurrently.')
-    parser.add_argument('--episodes', type=int, default=5, help='Number of episodes to test the environment')
     parser.add_argument('--train_timesteps', type=int, default=100_000, help='Number of timesteps to train the model')
     
     args = parser.parse_args()
     
-    main(args.episodes, args.train_timesteps)
+    main(args.train_timesteps)
