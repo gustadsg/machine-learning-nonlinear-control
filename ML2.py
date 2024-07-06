@@ -18,7 +18,6 @@ class Algorithm(Enum):
     A2C='A2C'
     DDPG='DDPG'
     ARS='ARS'
-    RecurrentPPO='RecurrentPPO'
     TQC='TQC'
     TRPO='TRPO'
 
@@ -30,7 +29,6 @@ class ProgressCallback(BaseCallback):
         Algorithm.A2C.value: '\033[95m',  # Magenta
         Algorithm.DDPG.value: '\033[96m',  # Cyan
         Algorithm.ARS.value: '\033[90m',  # Grey
-        Algorithm.RecurrentPPO.value: '\033[97m',  # White
         Algorithm.TQC.value: '\033[35m',  # Purple
         Algorithm.TRPO.value: '\033[36m',  # Light Cyan
         'RESET': '\033[0m'  # Reset color
@@ -58,7 +56,7 @@ def train_model(algorithm, train_timesteps):
     print(f"Created env for {algorithm}")
 
     # train the model
-    log_path = os.path.join("training", "logs2", algorithm.lower())
+    log_path = os.path.join("training", "logs4", algorithm.lower())
     if algorithm == Algorithm.PPO.value:
         model = PPO("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
     elif algorithm == Algorithm.TD3.value:
@@ -71,8 +69,6 @@ def train_model(algorithm, train_timesteps):
         model = A2C("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
     elif algorithm == Algorithm.DDPG.value:
         model = DDPG("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
-    elif algorithm == Algorithm.RecurrentPPO.value:
-        model = RecurrentPPO("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
     elif algorithm == Algorithm.TQC.value:
         model = TQC("MlpPolicy", env, verbose=0, tensorboard_log=log_path)
     elif algorithm == Algorithm.TRPO.value:
@@ -85,13 +81,14 @@ def train_model(algorithm, train_timesteps):
 
     # save the model
     model.save(algorithm)
-    mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=10)
-    print(f"Mean reward over 10 evaluation episodes for {algorithm}: {mean_reward}")
+    n_episodes = 20
+    mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=n_episodes)
+    print(f"Mean reward over {n_episodes} evaluation episodes for {algorithm}: {mean_reward}")
 
 def main(train_timesteps):
     algorithms = [alg.value for alg in Algorithm]
+    algorithms = [Algorithm.PPO.value]
 
-    algorithms = [Algorithm.ARS.value]
 
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(train_model, algorithm, train_timesteps) for algorithm in algorithms]
@@ -100,8 +97,8 @@ def main(train_timesteps):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train reinforcement learning models concurrently.')
-    parser.add_argument('--train_timesteps', type=int, default=100_000, help='Number of timesteps to train the model')
+    parser.add_argument('-t', type=int, default=100_000, help='Number of timesteps to train the model')
     
     args = parser.parse_args()
     
-    main(args.train_timesteps)
+    main(args.t)

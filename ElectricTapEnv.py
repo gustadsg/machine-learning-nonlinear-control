@@ -16,7 +16,7 @@ D_ACTION_INDEX = 2
 
 MIN_SETPOINT = 2.353 # min tensao sensor
 MAX_SETPOINT = 3.023 # max tensao lido
-AVG_SETPOINT = MAX_SETPOINT/2
+AVG_SETPOINT = (MAX_SETPOINT+MIN_SETPOINT)/2
 
 MIN_ERROR = 0.001
 MAX_ERROR = (MAX_SETPOINT - MIN_SETPOINT)/2
@@ -27,9 +27,14 @@ MAX_OVERALL_REWARD = 10
 MIN_CONTROL_ACTION = 0
 MAX_CONTROL_ACTION = 10*10/math.pi
 
+# amount of seconds of each step simulation
 SIMULATION_STEP_PERIOD_SEC = 0.25
+# total seconds of simulation
+SIMULATION_TOTAL_TIME_SEC = 350
+# number of simulations needed to achieve defined simulation time
+SIMULATION_MAX_ITERATIONS = math.ceil(SIMULATION_TOTAL_TIME_SEC/SIMULATION_STEP_PERIOD_SEC)
 
-MIN_KP = -15
+MIN_KP = -20
 MAX_KP = 0
 
 MIN_KI = -15
@@ -47,9 +52,9 @@ class ElectricTapEnv(Env):
         super().__init__()
         self.simulator = TapSimulator()
 
-        # actions can be decrement, maintain or decrement gains by a pre-defined value
         # action is to choose the pid gains
         self.action_space = Box(np.array([MIN_KP, MIN_KI, MIN_KD]), np.array([MAX_KP, MAX_KI, MAX_KD]), shape=(3,), dtype=np.float32)
+
         # observation space has the form: [pv, mv, error, error_integral, error_derivative, kp, ki, kd]
         lower_limits = np.array([-math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf])
         upper_limits = np.array([math.inf, math.inf, math.inf, math.inf, math.inf, math.inf, math.inf, math.inf])
@@ -88,11 +93,11 @@ class ElectricTapEnv(Env):
             "integral_error": 0,
             "pv_arr": [], 
             "control_action_arr": [],
-            # "setpoint": random.uniform(MIN_SETPOINT, MAX_SETPOINT),
-            "setpoint": AVG_SETPOINT,
+            "setpoint": random.uniform(MIN_SETPOINT, MAX_SETPOINT),
+            # "setpoint": AVG_SETPOINT,
             "noise": 0,
             "iterations_counter": 0,
-            "max_iterations": 240,
+            "max_iterations": SIMULATION_MAX_ITERATIONS,
             "x1": 0,
             "x1_ponto": 0,
             "forced_stop": False
