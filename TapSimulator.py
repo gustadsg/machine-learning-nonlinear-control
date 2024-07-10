@@ -11,59 +11,31 @@ class TapSimulator:
         self.R = 0.1
         self.tau1 = 0.8902
         self.tau2 = 26.8097
-        self.r = math.pi/10
+        self.r = math.pi / 10
         self.k = -0.1093
-        self.ybar=(3.023+2.353)/2
-
+        self.ybar = (3.023 + 2.353) / 2
         self.noiseVariance = 2.287e-4
 
-        "Assumindo thetabar=pi/2, F'(thetabar)=-1"
     def __F(self, theta: float) -> float:
         return (-(math.pi/2 - theta/2 + math.sin(2*theta)/4))
 
     def generate_noise(self, number_of_points: int):
-        noise_vec = list()
-        noise_rate = 0.01
-        for i in range(number_of_points):
-            sample_has_noise = random.uniform(0,1) < noise_rate
-            sample_noise_value = random.gauss(0, self.noiseVariance) if sample_has_noise else 0
-            # noise_vec.append(sample_noise_value)
-            noise_vec.append(0)
+        return [0]*number_of_points
 
-        return noise_vec
-
-    """
-    x1 = output (V)
-    x2 = x1dot = output derivative (V/s)
-    x2dot = output second derivative (v/s^2)
-    """
-    def __plant(self, y: List[float], t, u: float, noise: float):
+    def __plant(self, t, y, u, noise):
         x1, x2 = y
-        noise_variance = 2.287e-4
-        uclipped = np.clip(u,0,10)
+        uclipped = np.clip(u, 0, 10)
+        F_r_uclipped = self.__F(self.r * uclipped)
 
-        return [
-            x2, # x1dot
-            (self.k*(self.__F(self.r*uclipped)+math.pi/4)/self.r + noise_variance*noise - (x1-self.ybar) - x2*(self.tau1+self.tau2))/(self.tau1*self.tau2) #x2dot
-        ]
+        x1dot = x2
+        x2dot = (self.k * (F_r_uclipped + math.pi / 4) / self.r + noise * self.noiseVariance - (x1 - self.ybar) - x2 * (self.tau1 + self.tau2)) / (self.tau1 * self.tau2)
+        
+        return [x1dot, x2dot]
 
-    def simulate(self, y0: List[int], u: float, simulationPeriodSec: float, noise: float):
-        """
-        Simulates one plant iteration given a control input and a initial state
-
-        Args:
-            y0: the initial state of the plant. Passed in the format [x, dxdt], where x is the process variable.
-            u: the current control signal to be applied to the plant
-            simulationPeriodSec: total period of simulation in seconds
-
-        Returns:
-            The list of points collected during the simulation
-        """
-
-        num_of_points =  5
-
-        t = np.linspace(0, simulationPeriodSec, num_of_points)
-        return integrate.odeint(self.__plant, y0, t, args=(u, noise))
+    def simulate(self, y0, u, simulationPeriodSec, noise):
+        t = [0, simulationPeriodSec]
+        sol = integrate.solve_ivp(self.__plant, t, y0, args=(u, noise), method='RK45', t_eval=np.linspace(0, simulationPeriodSec, 3))
+        return sol.y.T
     
 
 if __name__ == "__main__":
@@ -86,8 +58,8 @@ if __name__ == "__main__":
     for i in range(len(u_values)):
         u = u_values[i]
         num_of_points =  math.floor((simulationPeriod*1000)/5)
-        noise = TapSimulator.generate_noise(num_of_points)
-        result = TapSimulator.simulate(y0, u, simulationPeriod, noise[-1])  # Comece cada degrau a partir do anterior
+        #noise = TapSimulator.generate_noise(num_of_points)
+        result = TapSimulator.simulate(y0, u, simulationPeriod, 0)  # Comece cada degrau a partir do anterior
         t = np.linspace(i * simulationPeriod, (i + 1) * simulationPeriod, len(result))  # Intervalo de tempo para cada degrau
         y0 = result[-1]
 

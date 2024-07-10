@@ -10,19 +10,12 @@ import math
 
 from TapSimulator import TapSimulator
 
-P_ACTION_INDEX = 0
-I_ACTION_INDEX = 1
-D_ACTION_INDEX = 2
-
 MIN_SETPOINT = 2.353 # min tensao sensor
 MAX_SETPOINT = 3.023 # max tensao lido
 AVG_SETPOINT = (MAX_SETPOINT+MIN_SETPOINT)/2
 
-MIN_ERROR = 0.001
-MAX_ERROR = (MAX_SETPOINT - MIN_SETPOINT)/2
-
-MIN_OVERALL_REWARD = -50
-MAX_OVERALL_REWARD = 10
+ERROR_TOLERANCE_PERCENTAGE = 0.05
+MAX_STEP_SIZE_PERCENTAGE = 0.2
 
 MIN_CONTROL_ACTION = 0
 MAX_CONTROL_ACTION = 10*10/math.pi
@@ -30,17 +23,17 @@ MAX_CONTROL_ACTION = 10*10/math.pi
 # amount of seconds of each step simulation
 SIMULATION_STEP_PERIOD_SEC = 0.25
 # total seconds of simulation
-SIMULATION_TOTAL_TIME_SEC = 350
+SIMULATION_TOTAL_TIME_SEC = 180 # value chosen after some manual simulations on closed loop
 # number of simulations needed to achieve defined simulation time
 SIMULATION_MAX_ITERATIONS = math.ceil(SIMULATION_TOTAL_TIME_SEC/SIMULATION_STEP_PERIOD_SEC)
 
 MIN_KP = -20
 MAX_KP = 0
 
-MIN_KI = -15
+MIN_KI = -5
 MAX_KI = 0
 
-MIN_KD = -15
+MIN_KD = -0.01
 MAX_KD = 0
  
 # TODO? VOLTAR VALOR ORIGINAL
@@ -56,10 +49,10 @@ class ElectricTapEnv(Env):
         self.action_space = Box(np.array([MIN_KP, MIN_KI, MIN_KD]), np.array([MAX_KP, MAX_KI, MAX_KD]), shape=(3,), dtype=np.float32)
 
         # observation space has the form: [pv, mv, error, error_integral, error_derivative, kp, ki, kd]
-        lower_limits = np.array([-math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf, -math.inf])
-        upper_limits = np.array([math.inf, math.inf, math.inf, math.inf, math.inf, math.inf, math.inf, math.inf])
+        lower_limits = np.array([-math.inf, -math.inf, -math.inf, -math.inf, -math.inf, MIN_KP, MIN_KI, MIN_KD])
+        upper_limits = np.array([math.inf, math.inf, math.inf, math.inf, math.inf, MAX_KP, MAX_KI, MAX_KD])
         self.observation_space = Box(np.array(lower_limits), np.array(upper_limits), shape=(8,), dtype=np.float32)
-        self.reward_range = (-50,25)
+        self.reward_range = (-5,0)
 
         # initialize internal state
         self.reset()
@@ -100,7 +93,6 @@ class ElectricTapEnv(Env):
             "max_iterations": SIMULATION_MAX_ITERATIONS,
             "x1": 0,
             "x1_ponto": 0,
-            "forced_stop": False
         }
 
         self.__set_initial_control_action()
@@ -111,25 +103,22 @@ class ElectricTapEnv(Env):
 
     def __get_reward(self):
         error = self.internal_state["setpoint"] - self.internal_state["pv_arr"][-1]
+        reward = -(error * error) + NOISE_GAMMA * self.internal_state["noise"] * self.internal_state["noise"]
 
-        # if abs(error) < MIN_ERROR:
-        #     return MAX_OVERALL_REWARD  # maximum reward when minimum error
-
-        reward = max(MIN_OVERALL_REWARD, -(error * error) + NOISE_GAMMA * self.internal_state["noise"] * self.internal_state["noise"])
-
-        if np.isnan(reward) or not np.isfinite(reward):
-            print(f"Invalid reward value: {reward}. Returning 0")
-            return 0
-
-        return reward * SIMULATION_STEP_PERIOD_SEC
+        return reward
 
 
     def __set_setpoint(self):
         self.internal_state["setpoint"] = random.uniform(MIN_SETPOINT, MAX_SETPOINT)
 
     def __set_initial_pv(self):
-        # random initial reading value (between lower and upper bound temperature voltages)
-        initial_pv = random.uniform(MIN_SETPOINT, MAX_SETPOINT)
+        # define lower and upper bounds based on configured percentage 
+        delta_setpoint_scale = MAX_SETPOINT - MIN_SETPOINT
+        max_delta_step = delta_setpoint_scale * MAX_STEP_SIZE_PERCENTAGE
+
+        # random initial reading value (respecting max step size)
+        initial_pv = random.uniform(self.internal_state['setpoint'] - max_delta_step, self.internal_state['setpoint'] + max_delta_step)
+
         self.internal_state["pv_arr"].append(initial_pv)
         self.internal_state["pv_arr"].append(initial_pv)
         
@@ -146,15 +135,16 @@ class ElectricTapEnv(Env):
         self.internal_state["iterations_counter"] += 1
 
     def __get_is_done(self):
-        if(self.internal_state["forced_stop"]):
-            return True
-
         ran_out_of_time = self.internal_state["iterations_counter"] >= self.internal_state["max_iterations"]
         
         abs_error_arr = list(map(lambda pv: abs(self.internal_state["setpoint"]-pv), self.internal_state["pv_arr"]))
         abs_error_window = abs_error_arr[-10:] # last 10 elements of the list
 
-        stabilized = all(error < MIN_ERROR for error in abs_error_window) # is stable if the window has a small error
+        # calculate error tolerated based on first pv, setpoint and tolerance percentage
+        error_tolerated = (self.internal_state["pv_arr"][0] - self.internal_state["setpoint"]) * ERROR_TOLERANCE_PERCENTAGE
+
+        stabilized = all(error < error_tolerated for error in abs_error_window) # is stable if the window has a small error
+        if(stabilized): print("hi yall, im stable")
 
         return ran_out_of_time or stabilized
 
@@ -208,37 +198,6 @@ class ElectricTapEnv(Env):
         ki = self.internal_state["KI"]
         kd = self.internal_state["KD"]
 
-        try:
-            raw_output = np.array([pv, mv, error, error_integral, error_derivative, kp, ki, kd]).astype(np.float32)
-            output, replaced = self.__replace_if_invalid(raw_output)
+        output = np.array([pv, mv, error, error_integral, error_derivative, kp, ki, kd]).astype(np.float32)
 
-            if replaced:
-                print(f"Replacement needed for output: {raw_output}")
-                self.__force_stop_episode()
-
-            return output
-        except Exception as e:
-            print(f"Overflow occurred with values: {[pv, mv, error, error_integral, error_derivative, kp, ki, kd]}")
-            print(f"Exception: {e}")
-            self.__force_stop_episode()
-            return np.array([0, 0, MAX_ERROR, 0, 0, 0, 0, 0]).astype(np.float32)
-        
-    def __force_stop_episode(self):
-        self.reset()
-        self.internal_state["iterations_counter"] = 500
-        self.internal_state["foced_stop"] = True
-
-    def __replace_if_invalid(self, input_values):
-        output_values = []
-        replaced = False
-        for val in input_values:
-            if not isinstance(val, np.float32):
-                val = np.float32(val)
-
-            if not np.isfinite(val):
-                val = np.float32(0.0)
-                replaced = True
-
-            output_values.append(val)
-
-        return np.array(output_values), replaced
+        return output
