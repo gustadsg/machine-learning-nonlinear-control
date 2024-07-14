@@ -12,13 +12,15 @@ from TapSimulator import TapSimulator
 
 MIN_SETPOINT = 2.353 # min tensao sensor
 MAX_SETPOINT = 3.023 # max tensao lido
-AVG_SETPOINT = (MAX_SETPOINT+MIN_SETPOINT)/2
 
-ERROR_TOLERANCE_PERCENTAGE = 0.05
-MAX_STEP_SIZE_PERCENTAGE = 0.2
+ERROR_TOLERANCE_PERCENTAGE = 2/100
+MAX_STEP_SIZE_PERCENTAGE = 20/100
 
 MIN_CONTROL_ACTION = 0
 MAX_CONTROL_ACTION = 10*10/math.pi
+
+MIN_REWARD = -100
+MAX_REWARD = 0
 
 # amount of seconds of each step simulation
 SIMULATION_STEP_PERIOD_SEC = 0.25
@@ -33,12 +35,8 @@ MAX_KP = 0
 MIN_KI = -5
 MAX_KI = 0
 
-MIN_KD = -0.01
-MAX_KD = 0
- 
-# TODO? VOLTAR VALOR ORIGINAL
-# NOISE_GAMMA = 0.0099
-NOISE_GAMMA = 0.0
+
+NOISE_GAMMA = 0.0099
 
 class ElectricTapEnv(Env):
     def __init__(self):
@@ -46,13 +44,13 @@ class ElectricTapEnv(Env):
         self.simulator = TapSimulator()
 
         # action is to choose the pid gains
-        self.action_space = Box(np.array([MIN_KP, MIN_KI, MIN_KD]), np.array([MAX_KP, MAX_KI, MAX_KD]), shape=(3,), dtype=np.float32)
+        self.action_space = Box(np.array([MIN_KP, MIN_KI]), np.array([MAX_KP, MAX_KI]), shape=(2,), dtype=np.float32)
 
-        # observation space has the form: [pv, mv, error, error_integral, error_derivative, kp, ki, kd]
-        lower_limits = np.array([-math.inf, -math.inf, -math.inf, -math.inf, -math.inf, MIN_KP, MIN_KI, MIN_KD])
-        upper_limits = np.array([math.inf, math.inf, math.inf, math.inf, math.inf, MAX_KP, MAX_KI, MAX_KD])
-        self.observation_space = Box(np.array(lower_limits), np.array(upper_limits), shape=(8,), dtype=np.float32)
-        self.reward_range = (-5,0)
+        # observation space has the form: [pv, mv, error, error_integral, error_derivative, kp, ki]
+        lower_limits = np.array([-math.inf, -math.inf, -math.inf, -math.inf, -math.inf, MIN_KP, MIN_KI])
+        upper_limits = np.array([math.inf, math.inf, math.inf, math.inf, math.inf, MAX_KP, MAX_KI])
+        self.observation_space = Box(np.array(lower_limits), np.array(upper_limits), shape=(7,), dtype=np.float32)
+        self.reward_range = (MIN_REWARD,MAX_REWARD)
 
         # initialize internal state
         self.reset()
@@ -82,12 +80,10 @@ class ElectricTapEnv(Env):
         self.internal_state = {
             "KP": -1,
             "KI": 0,
-            "KD": 0,
             "integral_error": 0,
             "pv_arr": [], 
             "control_action_arr": [],
             "setpoint": random.uniform(MIN_SETPOINT, MAX_SETPOINT),
-            # "setpoint": AVG_SETPOINT,
             "noise": 0,
             "iterations_counter": 0,
             "max_iterations": SIMULATION_MAX_ITERATIONS,
@@ -149,10 +145,9 @@ class ElectricTapEnv(Env):
         return ran_out_of_time or stabilized
 
     def __take_action(self, action):
-        action = np.clip(action, [MIN_KP, MIN_KI, MIN_KD], [MAX_KP, MAX_KI, MAX_KD])
+        action = np.clip(action, [MIN_KP, MIN_KI], [MAX_KP, MAX_KI])
         self.internal_state["KP"] = action[0]
         self.internal_state["KI"] = action[1]
-        self.internal_state["KD"] = action[2]
 
     def __calculate_control_action(self):
         error = list(map(lambda pv: self.internal_state["setpoint"]-pv, self.internal_state["pv_arr"]))
@@ -161,9 +156,7 @@ class ElectricTapEnv(Env):
         self.internal_state["integral_error"] += error[-1] * SIMULATION_STEP_PERIOD_SEC
         I = self.internal_state["integral_error"] * self.internal_state["KI"] 
 
-        D = (error[-1]-error[-2]) * self.internal_state["KD"]/SIMULATION_STEP_PERIOD_SEC
-
-        return P + I + D
+        return P + I
     
     def __simulate_plant(self):
         control_action = self.__calculate_control_action()
@@ -186,7 +179,7 @@ class ElectricTapEnv(Env):
         return pv
     
     def __serialize_state(self):
-        # [pv, mv, error, error_integral, error_derivative, kp, ki, kd]
+        # [pv, mv, error, error_integral, error_derivative, kp, ki]
         all_error_arr = list(map(lambda pv: self.internal_state["setpoint"] - pv, self.internal_state["pv_arr"]))
 
         pv = self.internal_state["pv_arr"][-1]
@@ -196,8 +189,7 @@ class ElectricTapEnv(Env):
         error_derivative = (all_error_arr[-1] - all_error_arr[-2]) / SIMULATION_STEP_PERIOD_SEC if len(all_error_arr) > 1 else 0
         kp = self.internal_state["KP"]
         ki = self.internal_state["KI"]
-        kd = self.internal_state["KD"]
 
-        output = np.array([pv, mv, error, error_integral, error_derivative, kp, ki, kd]).astype(np.float32)
+        output = np.array([pv, mv, error, error_integral, error_derivative, kp, ki]).astype(np.float32)
 
         return output
