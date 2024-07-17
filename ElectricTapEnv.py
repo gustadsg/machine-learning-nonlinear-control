@@ -13,7 +13,6 @@ from TapSimulator import TapSimulator
 MIN_SETPOINT = 2.353 # min tensao sensor
 MAX_SETPOINT = 3.023 # max tensao lido
 
-ERROR_TOLERANCE_PERCENTAGE = 2/100
 MAX_STEP_SIZE_PERCENTAGE = 20/100
 
 MIN_CONTROL_ACTION = 0
@@ -132,17 +131,8 @@ class ElectricTapEnv(Env):
 
     def __get_is_done(self):
         ran_out_of_time = self.internal_state["iterations_counter"] >= self.internal_state["max_iterations"]
-        
-        abs_error_arr = list(map(lambda pv: abs(self.internal_state["setpoint"]-pv), self.internal_state["pv_arr"]))
-        abs_error_window = abs_error_arr[-10:] # last 10 elements of the list
 
-        # calculate error tolerated based on first pv, setpoint and tolerance percentage
-        error_tolerated = (self.internal_state["pv_arr"][0] - self.internal_state["setpoint"]) * ERROR_TOLERANCE_PERCENTAGE
-
-        stabilized = all(error < error_tolerated for error in abs_error_window) # is stable if the window has a small error
-        if(stabilized): print("hi yall, im stable")
-
-        return ran_out_of_time or stabilized
+        return ran_out_of_time 
 
     def __take_action(self, action):
         action = np.clip(action, [MIN_KP, MIN_KI], [MAX_KP, MAX_KI])
@@ -163,16 +153,14 @@ class ElectricTapEnv(Env):
 
         y0 = [self.internal_state["x1"], self.internal_state["x1_ponto"]]
 
-        num_of_points =  math.floor((SIMULATION_STEP_PERIOD_SEC*1000)/5)
-        standart_deviation = .0149
-        simulation_noise = list(map(lambda x: x*standart_deviation, self.simulator.generate_noise(num_of_points)))
-        simulation_result = self.simulator.simulate(y0, control_action, SIMULATION_STEP_PERIOD_SEC, simulation_noise[-1])
+        simulation_noise = self.simulator.generate_noise()
+        simulation_result = self.simulator.simulate(y0, control_action, SIMULATION_STEP_PERIOD_SEC, simulation_noise)
         
         
         pv = simulation_result[-1,0]
 
         self.internal_state["pv_arr"].append(pv)
-        self.internal_state["noise"] = simulation_noise[-1]
+        self.internal_state["noise"] = simulation_noise
         self.internal_state["x1"] = pv
         self.internal_state["x1_ponto"] = simulation_result[-1,1]
 

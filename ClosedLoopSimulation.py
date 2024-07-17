@@ -27,7 +27,7 @@ class ClosedLoopSimulator:
         time_list = []
 
         for step in range(num_steps):
-            noise = self.tap_simulator.generate_noise(1)[-1]
+            noise = self.tap_simulator.generate_noise()
             pv = y0[0]
             control_action = self.pid_controller.calculate_control_action(pv)
             result = self.tap_simulator.simulate(y0, control_action, self.TS, noise)
@@ -59,7 +59,6 @@ class ClosedLoopSimulator:
         fig.legend(loc='upper right')
         plt.grid(True)
         plt.savefig("closed_loop.png")
-        plt.show()
 
     def print_summary(self,pv_arr):
         print(f"setpoint: {AVG_SETPOINT}")
@@ -67,5 +66,5 @@ class ClosedLoopSimulator:
 
 if __name__ == "__main__":
     #this controller has good results
-    closed_loop_simulator = ClosedLoopSimulator(kp=-20, ki=-2.4, kd=0, setpoint=AVG_SETPOINT, TS=0.25)
+    closed_loop_simulator = ClosedLoopSimulator(kp=-20, ki=-5, kd=0, setpoint=AVG_SETPOINT, TS=0.25)
     closed_loop_simulator.run_simulation(simulation_time_sec=200)  # Simulate for 6 minutes

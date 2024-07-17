@@ -14,13 +14,15 @@ class TapSimulator:
         self.r = math.pi / 10
         self.k = -0.1093
         self.ybar = (3.023 + 2.353) / 2
-        self.noiseVariance = 2.287e-4
+        self.noiseVariance = 0.2
+        self.standartVariation = math.sqrt(self.noiseVariance)
+        self.noiseGain = self.k
 
     def __F(self, theta: float) -> float:
         return (-(math.pi/2 - theta/2 + math.sin(2*theta)/4))
 
-    def generate_noise(self, number_of_points: int):
-        return [0]*number_of_points
+    def generate_noise(self):
+        return np.random.normal(0, abs(self.noiseGain))
 
     def __plant(self, t, y, u, noise):
         x1, x2 = y
@@ -58,8 +60,8 @@ if __name__ == "__main__":
     for i in range(len(u_values)):
         u = u_values[i]
         num_of_points =  math.floor((simulationPeriod*1000)/5)
-        #noise = TapSimulator.generate_noise(num_of_points)
-        result = TapSimulator.simulate(y0, u, simulationPeriod, 0)  # Comece cada degrau a partir do anterior
+        noise = TapSimulator.generate_noise()
+        result = TapSimulator.simulate(y0, u, simulationPeriod, noise)  # Comece cada degrau a partir do anterior
         t = np.linspace(i * simulationPeriod, (i + 1) * simulationPeriod, len(result))  # Intervalo de tempo para cada degrau
         y0 = result[-1]
 

@@ -66,7 +66,7 @@ def train_model(algorithm, train_timesteps):
         Algorithm.TRPO.value: TRPO,
     }[algorithm]
     
-    model = model_cls("MlpPolicy", env, verbose=0, tensorboard_log=log_path, )
+    model = model_cls("MlpPolicy", env, verbose=1, tensorboard_log=log_path, )
 
     callback = ProgressCallback(total_timesteps=train_timesteps, algorithm_name=algorithm, check_freq=500)
     model.learn(total_timesteps=train_timesteps, callback=callback)
@@ -79,10 +79,6 @@ def train_model(algorithm, train_timesteps):
 
 def main(train_timesteps):
     algorithms = [
-        Algorithm.SAC.value,
-        Algorithm.DDPG.value,
-        Algorithm.A2C.value,
-        Algorithm.ARS.value,
         Algorithm.TD3.value
     ]
 
