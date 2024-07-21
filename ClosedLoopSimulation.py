@@ -17,7 +17,7 @@ class ClosedLoopSimulator:
         self.setpoint = setpoint
 
     def run_simulation(self, simulation_time_sec):
-        x0 = 2.5+.134
+        x0 = MIN_SETPOINT
         dxdt = 0
         y0 = np.array([x0, dxdt])
         num_steps = int(simulation_time_sec / self.TS)
@@ -43,19 +43,19 @@ class ClosedLoopSimulator:
     def plot_results(self, time_list, pv_list, control_action_list):
         fig, ax1 = plt.subplots()
 
-        ax1.plot(time_list, pv_list, label='Plant Output (PV)', color='b')
-        ax1.set_xlabel('Time [s]')
-        ax1.set_ylabel('Output Voltage [V]', color='b')
+        ax1.plot(time_list, pv_list, label='Tensão de Saída (PV)', color='b')
+        ax1.set_xlabel('Tempo [s]')
+        ax1.set_ylabel('Tensão de Saída [V]', color='b')
 
         # Add setpoint line
         setpoint_list = [self.setpoint] * len(time_list)
         ax1.plot(time_list, setpoint_list, label='Setpoint', color='g', linestyle='--')
 
         ax2 = ax1.twinx()
-        ax2.plot(time_list, control_action_list, label='Control Action (U)', color='r')
-        ax2.set_ylabel('Control Action [V]', color='r')
+        ax2.plot(time_list, control_action_list, label='Ação de Controle (U)', color='r')
+        ax2.set_ylabel('Ação de Controle [V]', color='r')
 
-        plt.title('Closed Loop Simulation')
+        plt.title(f'Simulação em Malha Fechada\n P:{self.pid_controller.KP};I:{self.pid_controller.KI};D:{self.pid_controller.KD};')
         fig.legend(loc='upper right')
         plt.grid(True)
         plt.savefig("closed_loop.png")
@@ -66,5 +66,5 @@ class ClosedLoopSimulator:
 
 if __name__ == "__main__":
     #this controller has good results
-    closed_loop_simulator = ClosedLoopSimulator(kp=-20, ki=-5, kd=0, setpoint=AVG_SETPOINT, TS=0.25)
+    closed_loop_simulator = ClosedLoopSimulator(kp=-15, ki=-5, kd=0, setpoint=AVG_SETPOINT, TS=0.25)
     closed_loop_simulator.run_simulation(simulation_time_sec=200)  # Simulate for 6 minutes
