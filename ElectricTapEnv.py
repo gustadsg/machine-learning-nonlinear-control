@@ -31,14 +31,14 @@ SIMULATION_MAX_ITERATIONS = math.ceil(SIMULATION_TOTAL_TIME_SEC/SIMULATION_STEP_
 MIN_KP = -20
 MAX_KP = 0
 
-MIN_KI = -5
+MIN_KI = -15
 MAX_KI = 0
 
 
 NOISE_GAMMA = 0.0099
 
 class ElectricTapEnv(Env):
-    def __init__(self):
+    def __init__(self, plot_results = False):
         super().__init__()
         self.simulator = TapSimulator()
 
@@ -53,11 +53,7 @@ class ElectricTapEnv(Env):
 
         # initialize internal state
         self.reset()
-
-        # get random initial state
-        self.__set_initial_control_action()
-        self.__set_initial_pv()
-        self.__set_setpoint()
+        self.plot_results = plot_results
     
     def step(self, action):
         self.__increment_counter()
@@ -67,7 +63,10 @@ class ElectricTapEnv(Env):
         reward = self.__get_reward()
         done = self.__get_is_done()
 
-        truncated = self.internal_state["control_action_arr"][-1] < MIN_CONTROL_ACTION or self.internal_state["control_action_arr"][-1] > MAX_CONTROL_ACTION
+        if(done and self.plot_results):
+            self.__plot()
+
+        truncated = False
         info = {}
 
         return self.__serialize_state(), reward, done, truncated, info
@@ -79,6 +78,7 @@ class ElectricTapEnv(Env):
         self.internal_state = {
             "KP": -1,
             "KI": 0,
+            "KD": 0, # this will remain 0 for all simulation long
             "integral_error": 0,
             "pv_arr": [], 
             "control_action_arr": [],
@@ -88,11 +88,13 @@ class ElectricTapEnv(Env):
             "max_iterations": SIMULATION_MAX_ITERATIONS,
             "x1": 0,
             "x1_ponto": 0,
+            "KP_arr": [-1],
+            "KI_arr": [0],
+            "KD_arr": [0],
         }
 
         self.__set_initial_control_action()
         self.__set_initial_pv()
-        self.__set_setpoint()
 
         return self.__serialize_state(), {}
 
@@ -101,10 +103,6 @@ class ElectricTapEnv(Env):
         reward = -(error * error) + NOISE_GAMMA * self.internal_state["noise"] * self.internal_state["noise"]
 
         return reward
-
-
-    def __set_setpoint(self):
-        self.internal_state["setpoint"] = random.uniform(MIN_SETPOINT, MAX_SETPOINT)
 
     def __set_initial_pv(self):
         # define lower and upper bounds based on configured percentage 
@@ -139,12 +137,22 @@ class ElectricTapEnv(Env):
         self.internal_state["KP"] = action[0]
         self.internal_state["KI"] = action[1]
 
+        # These internal states make simulation slower and are only used for plots
+        if(self.plot_results):
+            self.internal_state["KP_arr"].append(self.internal_state["KP"])
+            self.internal_state["KI_arr"].append(self.internal_state["KI"])
+            self.internal_state["KD_arr"].append(self.internal_state["KD"])
+
     def __calculate_control_action(self):
         error = list(map(lambda pv: self.internal_state["setpoint"]-pv, self.internal_state["pv_arr"]))
         P = self.internal_state["KP"] * error[-1]
         
         self.internal_state["integral_error"] += error[-1] * SIMULATION_STEP_PERIOD_SEC
         I = self.internal_state["integral_error"] * self.internal_state["KI"] 
+
+        control_action = P+I
+
+        np.clip(control_action, MIN_CONTROL_ACTION, MAX_CONTROL_ACTION)
 
         return P + I
     
@@ -163,6 +171,7 @@ class ElectricTapEnv(Env):
         self.internal_state["noise"] = simulation_noise
         self.internal_state["x1"] = pv
         self.internal_state["x1_ponto"] = simulation_result[-1,1]
+        self.internal_state["control_action_arr"].append(control_action)
 
         return pv
     
@@ -181,3 +190,39 @@ class ElectricTapEnv(Env):
         output = np.array([pv, mv, error, error_integral, error_derivative, kp, ki]).astype(np.float32)
 
         return output
+    
+    def __plot(self):
+        fig, (ax1, ax3) = plt.subplots(2, 1)
+        pv_list = self.internal_state['pv_arr']
+        control_action_list = self.internal_state['control_action_arr']
+        time_list = np.linspace(0, len(pv_list)*SIMULATION_STEP_PERIOD_SEC, len(pv_list))
+
+        # Plot PV x Setpint in time
+        ax1.plot(time_list, pv_list, label='Tensão de Saída (PV)', color='b')
+        ax1.set_xlabel('Tempo [s]')
+        ax1.set_ylabel('Tensão de Saída [V]', color='b')
+
+        # Add setpoint line
+        setpoint_list = [self.internal_state['setpoint']] * len(time_list)
+        ax1.plot(time_list, setpoint_list, label='Setpoint', color='g', linestyle='--')
+
+        ax2 = ax1.twinx()
+        ax2.plot(time_list, control_action_list, label='Ação de Controle (U)', color='r')
+        ax2.set_ylabel('Ação de Controle [V]', color='r')
+
+        # Plot gains in time
+        kp_arr = self.internal_state['KP_arr']
+        ki_arr = self.internal_state['KI_arr']
+        kd_arr = self.internal_state['KD_arr']
+        time_list = np.linspace(0, len(kp_arr)*SIMULATION_STEP_PERIOD_SEC, len(kp_arr))
+        ax3.plot(time_list, kp_arr, label='Kp', color='c')
+        ax3.plot(time_list, ki_arr, label='Ki', color='r')
+        ax3.plot(time_list, kd_arr, label='Kd', color='m')
+        ax3.set_xlabel('Tempo [s]')
+        ax3.set_ylabel('Ganhos')
+        ax3.legend(loc='upper right')
+
+        plt.title(f'Resultado de simulação em ambiente de aprendizado.')
+        fig.legend(loc='upper right')
+        plt.grid(True)
+        plt.show()
