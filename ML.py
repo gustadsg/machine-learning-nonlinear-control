@@ -1,5 +1,6 @@
 import os
 import argparse
+import time
 from enum import Enum
 from concurrent.futures import ProcessPoolExecutor
 from stable_baselines3 import PPO, TD3, SAC, A2C, DDPG
@@ -32,19 +33,25 @@ class ProgressCallback(BaseCallback):
         'RESET': '\033[0m'  # Reset color
     }
 
-    def __init__(self, total_timesteps, algorithm_name, check_freq=1000):
+    def __init__(self, total_timesteps, algorithm_name, check_freq=20000):
         super(ProgressCallback, self).__init__()
         self.total_timesteps = total_timesteps
         self.check_freq = check_freq
         self.timesteps_done = 0
         self.algorithm_name = algorithm_name
+        self.start_time = time.time()
 
     def _on_step(self) -> bool:
         self.timesteps_done += 1
         if self.timesteps_done % self.check_freq == 0 or self.timesteps_done == self.total_timesteps:
             progress = 100 * self.timesteps_done / self.total_timesteps
+            elapsed_time = time.time() - self.start_time
+            estimated_total_time = elapsed_time * self.total_timesteps / self.timesteps_done
+            remaining_time = estimated_total_time - elapsed_time
+            estimated_end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() + remaining_time))
             color = self.algorithm_color.get(self.algorithm_name, self.algorithm_color['RESET'])
             print(f"{color}[{self.algorithm_name}] Training progress: {progress:.2f}% -> {self.timesteps_done} out of {self.total_timesteps} timesteps.")
+            print(f"Elapsed time: {elapsed_time:.2f}s, Estimated remaining time: {remaining_time:.2f}s, Estimated end time: {estimated_end_time}")
         return True
 
 def train_model(algorithm, train_timesteps):
@@ -68,7 +75,7 @@ def train_model(algorithm, train_timesteps):
     
     model = model_cls("MlpPolicy", env, verbose=1, tensorboard_log=log_path, )
 
-    callback = ProgressCallback(total_timesteps=train_timesteps, algorithm_name=algorithm, check_freq=500)
+    callback = ProgressCallback(total_timesteps=train_timesteps, algorithm_name=algorithm)
     model.learn(total_timesteps=train_timesteps, callback=callback)
 
     # save the model
