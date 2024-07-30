@@ -3,6 +3,7 @@ from scipy import integrate
 import numpy as np
 from typing import List
 import matplotlib.pyplot as plt
+import csv
 
 class TapSimulator:
     def __init__(self):
@@ -39,50 +40,86 @@ class TapSimulator:
     
 
 if __name__ == "__main__":
-    x0 = 2.353
-    dxdt = 0
-    y0 = np.array([x0, dxdt])
+    entries = np.linspace(0,10,100)
+    entradas = []
+    saidas = []
 
-    TapSimulator = TapSimulator()
-    simulationPeriod = .25
+    def save_vectors_to_csv(vector1, vector2, filename):
+        """
+        Save two vectors to a CSV file.
 
-    # Lista de valores de u para cada degrau
-    u_values = np.concatenate((np.full(200*4, 5), np.full(200*4, 3)))
-    u_values = np.concatenate((u_values, u_values))
-    u0 = 5
+        Parameters:
+        vector1 (list or np.array): The first vector to save.
+        vector2 (list or np.array): The second vector to save.
+        filename (str): The name of the CSV file to save the vectors to.
+        """
+        # Ensure the vectors are the same length
+        if len(vector1) != len(vector2):
+            raise ValueError("The vectors must be of the same length.")
 
-    u_vector = []
-    y_vector = []
+        # Open the file in write mode
+        with open(filename, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            
+            # Write the header
+            writer.writerow(['Vector 1', 'Vector 2'])
+            
+            # Write the data
+            for v1, v2 in zip(vector1, vector2):
+                writer.writerow([v1, v2])
 
+    for entry in entries:
+        x0 = 2.6
+        dxdt = 0
+        y0 = np.array([x0, dxdt])
+
+        tapSimulator = TapSimulator()
+        simulationPeriod = .25
+
+        # Lista de valores de u para cada degrau
+        u_values = np.full(200*4, entry)
+        # u_values = np.concatenate((np.full(200*4, 0), np.full(200*4, 3)))
+        # u_values = np.concatenate((u_values, u_values))
+        u0 = entry
+
+        u_vector = []
+        y_vector = []
+
+        # fig, ax1 = plt.subplots()
+
+        # Simulação para cada degrau
+        for i in range(len(u_values)):
+            u = u_values[i]
+            noise = tapSimulator.generate_noise()
+            result = tapSimulator.simulate(y0, u, simulationPeriod, noise)  # Comece cada degrau a partir do anterior
+            t = np.linspace(i * simulationPeriod, (i + 1) * simulationPeriod, len(result))  # Intervalo de tempo para cada degrau
+            y0 = result[-1]
+
+            y_vector = np.append(y_vector, result[:,0])        
+            u_vector = np.append(u_vector, np.full(len(result), u))
+
+
+        # t_vector = np.linspace(0, len(u_values)*simulationPeriod, len(u_values)*len(result))
+        # ax1.plot(t_vector, y_vector, color="b")
+        # ax1.set_ylim([2.3, 3.1])
+
+        # ax1.set_xlabel('Tempo [s]')
+        # ax1.set_ylabel('Tensão Saída [V]')
+
+        # ax2 = ax1.twinx()
+        # ax2.plot(t_vector, u_vector, color="r")
+        # ax2.set_ylabel('Tensão Entrada [V]')
+
+        # plt.title('Simulação torneira')
+        # plt.grid(True)
+        entradas.append(entry)
+        saidas.append(y_vector[-1])
+
+        # plt.savefig("result.png")
+        # plt.show()
+    save_vectors_to_csv(entradas, saidas,"resultado_simulacao.csv")
     fig, ax1 = plt.subplots()
-
-    # Simulação para cada degrau
-    for i in range(len(u_values)):
-        u = u_values[i]
-        noise = TapSimulator.generate_noise()
-        result = TapSimulator.simulate(y0, u, simulationPeriod, noise)  # Comece cada degrau a partir do anterior
-        t = np.linspace(i * simulationPeriod, (i + 1) * simulationPeriod, len(result))  # Intervalo de tempo para cada degrau
-        y0 = result[-1]
-
-        y_vector = np.append(y_vector, result[:,0])        
-        u_vector = np.append(u_vector, np.full(len(result), u))
-
-
-    t_vector = np.linspace(0, len(u_values)*simulationPeriod, len(u_values)*len(result))
-    ax1.plot(t_vector, y_vector, color="b")
-    ax1.set_ylim([2.5, 2.9])
-
-    ax1.set_xlabel('Tempo [s]')
-    ax1.set_ylabel('Tensão Saída [V]')
-
-    ax2 = ax1.twinx()
-    ax2.plot(t_vector, u_vector, color="r")
-    ax2.set_ylabel('Tensão Entrada [V]')
-
-    plt.title('Simulação torneira')
-    plt.grid(True)
-
-    plt.savefig("result.png")
+    ax1.plot(entradas, saidas)
     plt.show()
     
 

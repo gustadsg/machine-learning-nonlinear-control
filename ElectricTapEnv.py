@@ -17,14 +17,11 @@ MAX_ERROR = MAX_SETPOINT-MIN_SETPOINT
 
 MAX_STEP_SIZE_PERCENTAGE = 20/100
 
-VOLTS_TO_RADS = 10/math.pi
-RADS_TO_VOLTS = 1/VOLTS_TO_RADS
+MIN_CONTROL_ACTION_VOLTS = 0.0
+MAX_CONTROL_ACTION_VOLTS = 10
 
-MIN_CONTROL_ACTION = 0.0
-MAX_CONTROL_ACTION = 10*VOLTS_TO_RADS
-
-MIN_REWARD = -2
-MAX_REWARD = 2
+MIN_REWARD = -.5
+MAX_REWARD = .5
 
 # amount of seconds of each step simulation
 SIMULATION_STEP_PERIOD_SEC = 0.25
@@ -39,7 +36,6 @@ MAX_KP = 0
 MIN_KI = -30
 MAX_KI = 0
 
-
 NOISE_GAMMA = 10
 
 class ElectricTapEnv(Env):
@@ -51,8 +47,8 @@ class ElectricTapEnv(Env):
         self.action_space = Box(np.array([MIN_KP, MIN_KI]), np.array([MAX_KP, MAX_KI]), shape=(2,), dtype=np.float16)
 
         # observation space has the form: [pv, mv, error, error_integral, error_derivative, kp, ki]
-        lower_limits = np.array([MIN_SETPOINT, MIN_CONTROL_ACTION, -MAX_ERROR, 0, 0, MIN_KP, MIN_KI])
-        upper_limits = np.array([MAX_SETPOINT, MAX_CONTROL_ACTION, MAX_SETPOINT - MIN_SETPOINT, math.inf, math.inf, MAX_KP, MAX_KI])
+        lower_limits = np.array([MIN_SETPOINT, MIN_CONTROL_ACTION_VOLTS, -MAX_ERROR, 0, 0, MIN_KP, MIN_KI])
+        upper_limits = np.array([MAX_SETPOINT, MAX_CONTROL_ACTION_VOLTS, MAX_SETPOINT - MIN_SETPOINT, math.inf, math.inf, MAX_KP, MAX_KI])
         self.observation_space = Box(np.array(lower_limits), np.array(upper_limits), shape=(7,), dtype=np.float16)
                 
         self.reward_range = (MIN_REWARD,MAX_REWARD)
@@ -88,7 +84,7 @@ class ElectricTapEnv(Env):
             "integral_error": 0,
             "pv_arr": [], 
             "control_action_arr": [],
-            "setpoint": random.uniform(MIN_SETPOINT, MAX_SETPOINT),
+            "setpoint": 0,
             "noise": 0,
             "iterations_counter": 0,
             "max_iterations": SIMULATION_MAX_ITERATIONS,
@@ -107,22 +103,35 @@ class ElectricTapEnv(Env):
 
     def __get_reward(self):
         error = self.internal_state["setpoint"] - self.internal_state["pv_arr"][-1]
-        last_control_action = self.internal_state['control_action_arr'][-1]*RADS_TO_VOLTS
+        last_control_action = self.internal_state['control_action_arr'][-1]
 
         error_penalty = -error**2
-        # tries to keep control action away from limits
-        control_action_penalty = -(3/25_00)*(last_control_action-5)**2
+        # tries to keep control action next to lower boundries
+        control_action_penalty = -2/100_000*(last_control_action-10)**2
         noise_forgiviness = NOISE_GAMMA*self.internal_state['noise']**2
 
         return error_penalty + control_action_penalty + noise_forgiviness
     
     def __set_initial_setpoint(self):
-        a, b = 0.5, 0.5  # Esses valores dão mais peso às extremidades
+        extremities_prob = 0.7
+        dice = np.random.uniform(0,1)
+        
+        # extrimities
+        if(dice<=extremities_prob):
+            dice = np.random.uniform(0,1)
 
-        # Gerar valores da distribuição beta
-        beta_values = np.random.beta(a, b)
-        mapped_value = np.interp(beta_values, (0, 1), (MIN_SETPOINT, MAX_SETPOINT))
-        self.internal_state["setpoint"] = mapped_value
+            # next to upper bound
+            if(dice <= 0.5):
+                self.internal_state['setpoint'] = np.random.uniform(MAX_SETPOINT-0.1*MAX_ERROR, MAX_SETPOINT)
+                return
+
+            # next to lower bound
+            self.internal_state['setpoint'] = np.random.uniform(MIN_SETPOINT, MIN_SETPOINT+0.1*MAX_ERROR)
+            return
+        
+        # in between
+        self.internal_state['setpoint'] = np.random.uniform(MIN_SETPOINT+0.1*MAX_ERROR,MAX_SETPOINT-0.1*MAX_ERROR)
+
 
     def __set_initial_pv(self):
         # define lower and upper bounds based on configured percentage 
@@ -157,16 +166,9 @@ class ElectricTapEnv(Env):
         action = np.clip(action, [MIN_KP, MIN_KI], [MAX_KP, MAX_KI])
         self.internal_state["KP"] = action[0]
         self.internal_state["KI"] = action[1]
-
-        # if(self.plot_results and len(self.internal_state['KP_arr'])>0):
-        if(False):
-            smooth = 0.4
-            self.internal_state['KP'] = smooth*action[0] + (1-smooth) *self.internal_state["KP_arr"][-1]
-            self.internal_state['KI'] = smooth*action[1] + (1-smooth) *self.internal_state["KI_arr"][-1]
         
         # These internal states make simulation slower and are only used for plots
         if(self.plot_results):
-        # if(True):
             self.internal_state["KP_arr"].append(self.internal_state["KP"])
             self.internal_state["KI_arr"].append(self.internal_state["KI"])
             self.internal_state["KD_arr"].append(self.internal_state["KD"])
@@ -178,7 +180,8 @@ class ElectricTapEnv(Env):
         self.internal_state["integral_error"] += error * SIMULATION_STEP_PERIOD_SEC
         I = self.internal_state["integral_error"] * self.internal_state["KI"] 
 
-        control_action = np.clip(P+I, MIN_CONTROL_ACTION, MAX_CONTROL_ACTION)
+        control_action = (P+I)
+        control_action = np.clip(control_action, MIN_CONTROL_ACTION_VOLTS, MAX_CONTROL_ACTION_VOLTS)
 
         return control_action
     
