@@ -1,11 +1,13 @@
 import os
 import argparse
+import time
 from enum import Enum
 from concurrent.futures import ProcessPoolExecutor
 from stable_baselines3 import PPO, TD3, SAC, A2C, DDPG
 from sb3_contrib import ARS, TQC, TRPO
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.noise import NormalActionNoise
 
 from ElectricTapEnv import ElectricTapEnv
 
@@ -20,56 +22,54 @@ class Algorithm(Enum):
     TRPO = 'TRPO'
 
 class ProgressCallback(BaseCallback):
-    algorithm_color = {
-        Algorithm.PPO.value: '\033[94m',  # Blue
-        Algorithm.TD3.value: '\033[92m',  # Green
-        Algorithm.SAC.value: '\033[93m',  # Yellow
-        Algorithm.A2C.value: '\033[95m',  # Magenta
-        Algorithm.DDPG.value: '\033[96m',  # Cyan
-        Algorithm.ARS.value: '\033[90m',  # Grey
-        Algorithm.TQC.value: '\033[35m',  # Purple
-        Algorithm.TRPO.value: '\033[36m',  # Light Cyan
-        'RESET': '\033[0m'  # Reset color
-    }
-
-    def __init__(self, total_timesteps, algorithm_name, check_freq=1000):
+    def __init__(self, total_timesteps, algorithm_name, check_freq=5000):
         super(ProgressCallback, self).__init__()
         self.total_timesteps = total_timesteps
         self.check_freq = check_freq
         self.timesteps_done = 0
         self.algorithm_name = algorithm_name
+        self.start_time = time.time()
 
     def _on_step(self) -> bool:
         self.timesteps_done += 1
         if self.timesteps_done % self.check_freq == 0 or self.timesteps_done == self.total_timesteps:
             progress = 100 * self.timesteps_done / self.total_timesteps
-            color = self.algorithm_color.get(self.algorithm_name, self.algorithm_color['RESET'])
-            print(f"{color}[{self.algorithm_name}] Training progress: {progress:.2f}% -> {self.timesteps_done} out of {self.total_timesteps} timesteps.")
+            elapsed_time = time.time() - self.start_time
+            estimated_total_time = elapsed_time * self.total_timesteps / self.timesteps_done
+            remaining_time = estimated_total_time - elapsed_time
+            estimated_end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() + remaining_time))
+            print(f"[{self.algorithm_name}] Training progress: {progress:.2f}% -> {self.timesteps_done} out of {self.total_timesteps} timesteps.")
+            print(f"Elapsed time: {elapsed_time:.2f}s, Estimated remaining time: {remaining_time:.2f}s, Estimated end time: {estimated_end_time}")
         return True
 
 def train_model(algorithm, train_timesteps):
     # create environment
     env = ElectricTapEnv()
-    # check_env(env)  # You can skip this if confident about env's correctness
-    print(f"Created env for {algorithm}")
 
     # train the model
-    log_path = os.path.join("training", "logs5", algorithm.lower())
-    model_cls = {
-        Algorithm.PPO.value: PPO,
-        Algorithm.TD3.value: TD3,
-        Algorithm.SAC.value: SAC,
-        Algorithm.A2C.value: A2C,
-        Algorithm.DDPG.value: DDPG,
-        Algorithm.ARS.value: ARS,
-        Algorithm.TQC.value: TQC,
-        Algorithm.TRPO.value: TRPO,
-    }[algorithm]
+    log_path = os.path.join("training", "logging", algorithm.lower())
     
-    model = model_cls("MlpPolicy", env, verbose=0, tensorboard_log=log_path, )
+    model = TD3(
+        "MlpPolicy",
+        env,
+        learning_rate=1e-4,
+        learning_starts=10_000,
+        verbose=1,
+        tensorboard_log=log_path,
+        # train_freq=(5, "episode"),
+        # gradient_steps=50,
+        action_noise=NormalActionNoise(mean=[0], sigma=[0.2]),
+        # policy_kwargs={"net_arch": [400, 300]},
+        # policy_delay=4,
+        target_policy_noise=0.4,
+        # gamma=0.99,
+        # buffer_size=10_000_000
+    )
+    # model = TD3.load('./TD3.zip')
+    model.set_env(env)
 
-    callback = ProgressCallback(total_timesteps=train_timesteps, algorithm_name=algorithm, check_freq=500)
-    model.learn(total_timesteps=train_timesteps, callback=callback)
+    callback = ProgressCallback(total_timesteps=train_timesteps, algorithm_name=algorithm)
+    model.learn(total_timesteps=train_timesteps)
 
     # save the model
     model.save(algorithm)
@@ -79,10 +79,6 @@ def train_model(algorithm, train_timesteps):
 
 def main(train_timesteps):
     algorithms = [
-        Algorithm.SAC.value,
-        Algorithm.DDPG.value,
-        Algorithm.A2C.value,
-        Algorithm.ARS.value,
         Algorithm.TD3.value
     ]
 
