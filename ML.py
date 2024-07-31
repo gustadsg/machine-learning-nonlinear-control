@@ -3,8 +3,7 @@ import argparse
 import time
 from enum import Enum
 from concurrent.futures import ProcessPoolExecutor
-from stable_baselines3 import PPO, TD3, SAC, A2C, DDPG
-from sb3_contrib import ARS, TQC, TRPO
+from stable_baselines3 import TD3
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import NormalActionNoise
@@ -55,7 +54,7 @@ def train_model(algorithm, train_timesteps):
         learning_rate=1e-4,
         learning_starts=10_000,
         verbose=1,
-        tensorboard_log=log_path,
+        # tensorboard_log=log_path,
         # train_freq=(5, "episode"),
         # gradient_steps=50,
         action_noise=NormalActionNoise(mean=[0], sigma=[0.2]),
@@ -66,7 +65,7 @@ def train_model(algorithm, train_timesteps):
         # buffer_size=10_000_000
     )
     # model = TD3.load('./TD3.zip')
-    model.set_env(env)
+    # model.set_env(env)
 
     callback = ProgressCallback(total_timesteps=train_timesteps, algorithm_name=algorithm)
     model.learn(total_timesteps=train_timesteps)

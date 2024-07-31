@@ -2,7 +2,6 @@ from stable_baselines3 import TD3
 from stable_baselines3.common.evaluation import evaluate_policy
 
 from ElectricTapEnv import ElectricTapEnv
-from ReducedEnv import ReducedEnv
 
 def run():
     model = TD3.load('./TD3.zip')

@@ -4,8 +4,8 @@ from PIDController import PIDController
 import numpy as np
 from matplotlib import pyplot as plt
 
-MIN_SETPOINT = 2.353 # min tensao sensor
-MAX_SETPOINT = 3.023 # max tensao lido
+MIN_SETPOINT = 2.413 # min tensao sensor
+MAX_SETPOINT = 2.963 # max tensao lido
 AVG_SETPOINT = (MAX_SETPOINT+MIN_SETPOINT)/2
 AVG_SETPOINT = 2.5
 
